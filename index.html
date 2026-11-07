@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Photo Sorter</title>
+<style>
+  :root {
+    --page: #e6eef8;
+    --surface: #ffffff;
+    --ink: #12263f;
+    --muted: #5b6f88;
+    --line: #d3deec;
+    --sky: #87ceeb;
+    --sky-ink: #0b3a5b;
+    --game: #10203a;
+    --ok: #1b8a4b;
+    --bad: #c0392b;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --page: #0a121f;
+      --surface: #121c2c;
+      --ink: #e6eef9;
+      --muted: #93a7c2;
+      --line: #25354d;
+      --ok: #4cc88a;
+      --bad: #ff7b6b;
+    }
+  }
+  html, body { height: 100%; margin: 0; }
+  body {
+    background: var(--page);
+    color: var(--ink);
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    overflow: hidden;
+  }
+
+  /* Working surface: margin 1 : surface 5 on each side of the centre line (2 : 10 overall) */
+  #surface {
+    position: absolute;
+    left: 8.3333vw; right: 8.3333vw;
+    top: 4vh; bottom: 4vh;
+    background: var(--surface);
+    border-radius: 20px;
+    box-shadow: 0 8px 30px rgba(10, 30, 60, .15);
+    padding: 16px;
+    box-sizing: border-box;
+    display: grid;
+    grid-template-rows: 20% minmax(0, 1fr) 30% 17%;
+    gap: 12px;
+  }
+
+  /* Load button (top fifth) */
+  #topBand { display: flex; justify-content: center; min-height: 0; }
+  #loadBtn {
+    position: relative; overflow: hidden;
+    height: 100%; width: 10%; min-width: 130px;
+    border: 0; border-radius: 16px;
+    background: var(--sky); color: var(--sky-ink);
+    font: 600 1.05rem system-ui, sans-serif;
+    cursor: pointer;
+    box-shadow: 0 3px 10px rgba(40, 130, 190, .35);
+  }
+  #loadBtn::before {
+    content: ""; position: absolute; top: 0; bottom: 0;
+    left: -70%; width: 45%;
+    background: linear-gradient(100deg, transparent, rgba(255, 255, 255, .85), transparent);
+    transform: skewX(-18deg);
+    transition: none;
+    pointer-events: none;
+  }
+  #loadBtn:hover:not(:disabled)::before { left: 130%; transition: left .7s ease; }
+  #loadBtn:disabled { opacity: .6; cursor: progress; }
+
+  /* Status panel */
+  #statusPanel {
+    border: 1px solid var(--line); border-radius: 14px;
+    padding: 12px 18px; overflow: auto; min-height: 0;
+  }
+  #statusTitle { margin: 0 0 6px; font-size: 1.15rem; }
+  #statusBody p { margin: 4px 0; color: var(--muted); font-size: .95rem; line-height: 1.4; }
+  #statusPanel.done #statusTitle { color: var(--ok); }
+  #statusPanel.error #statusTitle { color: var(--bad); }
+
+  /* Game */
+  #gameWrap { position: relative; border-radius: 14px; overflow: hidden; background: var(--game); min-height: 0; }
+  #gameCanvas { display: block; width: 100%; height: 100%; }
+  #gameFallback {
+    position: absolute; inset: 0; display: none;
+    align-items: center; justify-content: center;
+    color: #cfe3ff; font-size: .95rem; text-align: center; padding: 12px;
+  }
+
+  /* Progress (lower fifth) */
+  #progressZone { display: grid; grid-template-rows: 42% minmax(0, 1fr); gap: 8px; min-height: 0; }
+  #track { position: relative; border-radius: 999px; background: var(--line); overflow: hidden; }
+  #fill {
+    position: absolute; inset: 0;
+    background: linear-gradient(90deg, #8e24aa, #3949ab, #1e88e5, #43a047, #fdd835, #fb8c00, #e53935);
+    clip-path: inset(0 100% 0 0);
+    transition: clip-path .25s linear;
+  }
+  #fill::after {
+    content: ""; display: none;
+    position: absolute; top: 0; bottom: 0; left: -30%; width: 30%;
+    background: linear-gradient(100deg, transparent, rgba(255, 255, 255, .7), transparent);
+  }
+  #track.running #fill::after { display: block; animation: sheen 1.5s linear infinite; }
+  @keyframes sheen { from { left: -30%; } to { left: 100%; } }
+  #readout { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+  #pct { font-size: 1.6rem; font-weight: 700; }
+  #eta { color: var(--muted); font-size: 1rem; text-align: right; }
+</style>
+</head>
+<body>
+  <main id="surface">
+    <section id="topBand">
+      <button id="loadBtn" type="button">Load images</button>
+    </section>
+
+    <section id="statusPanel" aria-live="polite">
+      <h2 id="statusTitle">Ready</h2>
+      <div id="statusBody"></div>
+    </section>
+
+    <section id="gameWrap" aria-label="Santa's Helper mini-game">
+      <canvas id="gameCanvas"></canvas>
+      <div id="gameFallback">Mini-game unavailable. Sorting still works.</div>
+    </section>
+
+    <section id="progressZone">
+      <div id="track"><div id="fill"></div></div>
+      <div id="readout"><span id="pct">0%</span><span id="eta">Waiting to start</span></div>
+    </section>
+  </main>
+
+  <!-- Each script is independent: a failure in one cannot stop the others. -->
+  <script src="https://cdn.jsdelivr.net/npm/exifr@7.1.3/dist/full.umd.js"></script>
+  <script src="sorter.js"></script>
+  <script src="game.js" onerror="var f=document.getElementById('gameFallback');if(f)f.style.display='flex';"></script>
+</body>
+</html>
